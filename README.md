@@ -10,8 +10,36 @@ invitado solo se toma una foto en el modo "kiosco".
 - **Frontend + backend**: [TanStack Start](https://tanstack.com/start) (React 19 + Vite + Nitro), todo en un mismo proyecto.
 - **Base de datos y autenticación**: [Supabase](https://supabase.com) (Postgres + Auth + Storage).
 - **IA generativa de imágenes**: API de Gemini de Google, para crear la segunda foto del efecto Flip.
+- **Hosting**: configurado para desplegar en **Vercel** (ver más abajo).
 
-### Base de datos (Supabase / Postgres)
+## Desarrollo local
+
+Necesitas Node.js 20+ y npm.
+
+```sh
+npm install
+cp .env.example .env   # completa tus credenciales (ver siguiente sección)
+npm run dev
+```
+
+## Variables de entorno
+
+Copia `.env.example` como `.env` para desarrollo local. En Vercel, estas mismas
+variables se configuran en **Project Settings → Environment Variables** (Vercel
+no lee el archivo `.env`, así que este paso es obligatorio para que la app
+funcione en producción).
+
+| Variable | De dónde sale | Notas |
+|---|---|---|
+| `SUPABASE_URL` | Supabase → Project Settings → API → "Project URL" | |
+| `SUPABASE_PUBLISHABLE_KEY` | Supabase → Project Settings → API → "anon / publishable" | Es pública, no es secreta |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API → "service_role" | **Secreta.** Se usa solo en el servidor para subir fotos saltándose Row Level Security. Nunca la pongas con prefijo `VITE_` |
+| `VITE_SUPABASE_URL` | igual que `SUPABASE_URL` | La necesita el navegador (cliente de Supabase del lado del cliente) |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | igual que `SUPABASE_PUBLISHABLE_KEY` | Idem |
+| `VITE_SUPABASE_PROJECT_ID` | el id de tu proyecto Supabase (parte del subdominio) | Idem |
+| `GEMINI_API_KEY` | <https://aistudio.google.com/apikey> | Clave de la API de Gemini, para la IA de imágenes |
+
+## Base de datos (Supabase / Postgres)
 
 Las tablas viven en `supabase/migrations/` y se crean con Row Level Security
 (cada organizador solo ve sus propios datos):
@@ -24,7 +52,28 @@ Las tablas viven en `supabase/migrations/` y se crean con Row Level Security
 
 Las fotos finales se guardan en el bucket de Storage `capturas`.
 
-### IA generativa de imágenes
+### Cómo dejarla lista
+
+1. Crea un proyecto en [supabase.com](https://supabase.com) (o usa el que ya
+   tenías conectado).
+2. Corre las migraciones. Con la [Supabase CLI](https://supabase.com/docs/guides/cli):
+   ```sh
+   npx supabase link --project-ref TU_PROJECT_ID
+   npx supabase db push
+   ```
+   O, si prefieres no instalar la CLI, copia y pega el contenido de los dos
+   archivos de `supabase/migrations/` (en orden) en el **SQL Editor** del
+   panel de Supabase y ejecútalos.
+3. Crea el bucket de Storage llamado **`capturas`** (Storage → New bucket).
+   Puede ser privado: la app genera URLs firmadas temporales para entregar
+   cada foto, no necesita ser público.
+4. Habilita el login con Google si lo vas a usar: Authentication → Providers
+   → Google, y sigue el asistente de Supabase para conectar tus credenciales
+   de Google Cloud (esto es aparte de las variables de entorno de arriba).
+5. Copia la URL del proyecto y las claves (anon y service_role) a tus
+   variables de entorno, tal como se explica en la tabla de arriba.
+
+## IA generativa de imágenes
 
 El endpoint `src/routes/api/generate-flip.ts` recibe la foto tomada y el
 `ai_prompt` del estilo, y llama directamente a la API de Gemini
@@ -32,53 +81,51 @@ El endpoint `src/routes/api/generate-flip.ts` recibe la foto tomada y el
 que transforme la foto según el estilo elegido, conservando la pose y el
 parecido de la persona.
 
-Para que funcione necesitas una `GEMINI_API_KEY` (gratis, con cuota limitada):
+### Cómo dejarla lista
 
-1. Entra a <https://aistudio.google.com/apikey> y crea una clave.
-2. Ponla en tu `.env` como `GEMINI_API_KEY="tu-clave"`.
+1. Entra a <https://aistudio.google.com/apikey> y crea una clave (tiene una
+   cuota gratuita).
+2. Ponla como `GEMINI_API_KEY` en tu `.env` local y en las variables de
+   entorno de Vercel.
 
-Si el estilo tiene la IA desactivada (o la API falla), se usa automáticamente
-una variante en blanco y negro generada en el navegador — el kiosco nunca se
-queda sin poder entregar una foto.
+Si el estilo tiene la IA desactivada, o la API falla o se queda sin cuota, la
+app usa automáticamente una variante en blanco y negro generada en el
+navegador — el kiosco nunca se queda sin poder entregar una foto.
 
 ¿Prefieres otro proveedor de IA (OpenAI, Replicate, Stability, etc.)? Solo hay
 que cambiar la llamada `fetch` dentro de `generate-flip.ts`; el resto del
 endpoint (validaciones, respuesta al frontend) no cambia.
 
-## Desarrollo local
+## Desplegar en Vercel
 
-Necesitas Node.js 20+ y npm.
+El proyecto ya está configurado para Vercel: `vite.config.ts` usa el preset
+`vercel` de [Nitro](https://nitro.build), que genera automáticamente la
+estructura de funciones serverless que Vercel espera (`npm run build` produce
+`.vercel/output`, listo para desplegar).
 
-```sh
-npm install
-npm run dev
-```
+1. Sube el proyecto a un repo de GitHub (o GitLab/Bitbucket).
+2. En [vercel.com](https://vercel.com) → **Add New… → Project** → importa el
+   repo. Vercel detecta que es un proyecto Node/Vite con `npm run build` y no
+   necesitas tocar el "Build Command" ni el "Output Directory".
+3. Antes de darle a Deploy (o justo después, en Project Settings →
+   Environment Variables), agrega **todas** las variables de la tabla de
+   arriba (`SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_URL`,
+   `VITE_SUPABASE_PROJECT_ID`, `VITE_SUPABASE_PUBLISHABLE_KEY`,
+   `GEMINI_API_KEY`).
+4. Deploy. Cada push a la rama conectada vuelve a desplegar solo.
+5. Si usas login con Google: en Supabase (Authentication → URL Configuration)
+   agrega la URL de tu deployment de Vercel (`https://tu-proyecto.vercel.app`)
+   a los "Redirect URLs" permitidos, o el login con Google fallará en
+   producción aunque funcione en local.
 
-Copia `.env` y completa tus propias credenciales de Supabase y tu
-`GEMINI_API_KEY` antes de arrancar.
+### ¿Y si prefiero otro proveedor?
 
-## Desplegar en la nube
-
-El build (`npm run build`) usa [Nitro](https://nitro.build) con el preset
-`node-server`: genera un servidor Node.js normal en `.output/server/index.mjs`,
-sin depender de ningún proveedor en particular. Opciones recomendadas:
-
-- **Railway** o **Render**: conectas el repo de GitHub, cada uno detecta
-  `npm run build` / `npm start`-style y te da una URL pública en minutos. Es la
-  opción más simple si nunca has desplegado un backend.
-- **Un VPS con Docker** (Hetzner, DigitalOcean, etc.): construyes la imagen con
-  el resultado de `npm run build` y corres `node .output/server/index.mjs`.
-- **Serverless (Vercel, Netlify, Cloudflare)**: cambia el `preset` en
-  `vite.config.ts` (por ejemplo `preset: "vercel"`, `"netlify"` o
-  `"cloudflare-module"`) y sigue la guía de Nitro para ese proveedor:
-  <https://nitro.build/deploy>.
-
-En cualquiera de los casos, recuerda configurar las variables de entorno en el
-proveedor de hosting: `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`,
-`SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PROJECT_ID`,
-`VITE_SUPABASE_PUBLISHABLE_KEY` y `GEMINI_API_KEY`.
+Cambiando una línea en `vite.config.ts` (`nitro({ preset: "..." })`) puedes
+apuntar a Railway/Render/un VPS con `"node-server"`, a Netlify con
+`"netlify"`, o a Cloudflare con `"cloudflare-module"`. El resto del proyecto
+no cambia. Guía completa: <https://nitro.build/deploy>.
 
 Supabase (base de datos, auth y storage) ya vive en la nube por su cuenta —
-no hace falta desplegarlo, solo apuntar el proyecto al mismo `SUPABASE_URL`
-que usas en desarrollo (o crear un proyecto de Supabase separado para
-producción, si prefieres mantenerlos aislados).
+no hace falta desplegarlo, solo apuntar el proyecto al `SUPABASE_URL` que
+configuraste arriba.

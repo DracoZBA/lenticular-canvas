@@ -9,10 +9,10 @@ import { nitro } from "nitro/vite";
 // - tanstackStart: SSR/routing de TanStack Start. `server.entry: "server"` hace
 //   que el build use src/server.ts como punto de entrada del servidor (nuestro
 //   wrapper que atrapa errores SSR), tal como antes.
-// - nitro: motor de build/servidor. `preset: "node-server"` genera un server
-//   Node.js portable (sirve para Docker, Railway, Render, Fly.io, un VPS, etc).
-//   Si vas a desplegar en Vercel, Netlify o Cloudflare, cambia el preset (ver
-//   README, sección "Desplegar en la nube").
+// - nitro: motor de build/servidor. `preset: "vercel"` genera funciones
+//   serverless compatibles con Vercel automáticamente. Si despliegas en otro
+//   lado (Railway, Render, un VPS, Docker) cambia el preset a "node-server"
+//   (ver README, sección "Desplegar en la nube").
 export default defineConfig(({ mode }) => {
   // Expone las variables VITE_* del .env como import.meta.env.* en el cliente.
   const env = loadEnv(mode, process.cwd(), "VITE_");
@@ -51,7 +51,7 @@ export default defineConfig(({ mode }) => {
         },
         server: { entry: "server" },
       }),
-      nitro({ preset: "node-server" }),
+      nitro({ preset: "vercel" }),
       viteReact(),
     ],
   };
